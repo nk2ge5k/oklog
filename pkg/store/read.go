@@ -12,7 +12,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 
-	"github.com/oklog/oklog/pkg/fs"
+	"oklog/pkg/fs"
 )
 
 // ErrShortRead is returned when a read is unexpectedly shortened.

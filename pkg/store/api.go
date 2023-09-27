@@ -18,8 +18,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/oklog/oklog/pkg/cluster"
-	"github.com/oklog/oklog/pkg/stream"
+	"oklog/pkg/cluster"
+	"oklog/pkg/stream"
 )
 
 // These are the store API URL paths.

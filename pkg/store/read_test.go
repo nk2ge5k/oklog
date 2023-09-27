@@ -17,7 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oklog/oklog/pkg/fs"
+	"oklog/pkg/fs"
+
 	"github.com/oklog/ulid"
 )
 
@@ -354,10 +355,9 @@ func TestMergeReadCloser(t *testing.T) {
 // NOTE(tsenart): Profiling the benchmark with already generated test data
 // yields more meaningful and easy to understand results.
 //
-//   go test -c ./pkg/store
-//   ./store.test -test.run=XXX -test.benchmem -test.cpuprofile=out -test.bench=MergeReader
-//   go tool pprof -web store.test out
-//
+//	go test -c ./pkg/store
+//	./store.test -test.run=XXX -test.benchmem -test.cpuprofile=out -test.bench=MergeReader
+//	go tool pprof -web store.test out
 func BenchmarkMergeReadCloser(b *testing.B) {
 	const size = 32 * 1024 * 1024
 	r, err := newMergeReadCloser(generateSegments(b, 128, size, "testdata/segments"))
