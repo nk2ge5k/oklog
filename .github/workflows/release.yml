@@ -11,7 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Docker push
-        run: make docker-push
+        if: startsWith(github.ref, 'refs/tags/')
+        run: REVISION="${{ github.ref_name }}" make docker-push
   release:
     needs:
       - deploy
