@@ -25,8 +25,8 @@ const tmplIndex = `<!DOCTYPE html>
 
 // API serves the ui API.
 type API struct {
-	local  bool
 	logger log.Logger
+	local  bool
 }
 
 // NewAPI returns a usable API.
@@ -46,7 +46,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mux.Handle("/scripts/", http.FileServer(_escFS(a.local)))
 	mux.Handle("/styles/", http.FileServer(_escFS(a.local)))
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		_ = tplRoot.Execute(w, nil)
 	})
 

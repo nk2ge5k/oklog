@@ -4,7 +4,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"oklog/pkg/flock"
@@ -100,39 +99,9 @@ func (f realFile) Close() error {
 }
 
 func (f realFile) Size() int64 {
-	fi, err := f.File.Stat()
+	fi, err := f.Stat()
 	if err != nil {
 		panic(err)
 	}
 	return fi.Size()
-}
-
-// multiCloser closes all underlying io.Closers.
-// If an error is encountered, closings continue.
-type multiCloser []io.Closer
-
-func (c multiCloser) Close() error {
-	var errs []error
-	for _, closer := range c {
-		if closer == nil {
-			continue
-		}
-		if err := closer.Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if len(errs) > 0 {
-		return multiCloseError(errs)
-	}
-	return nil
-}
-
-type multiCloseError []error
-
-func (e multiCloseError) Error() string {
-	a := make([]string, len(e))
-	for i, err := range e {
-		a[i] = err.Error()
-	}
-	return strings.Join(a, "; ")
 }

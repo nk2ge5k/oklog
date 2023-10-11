@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -134,6 +133,9 @@ func (iw *interceptingWriter) Flush() {
 	}
 }
 
+// TODO(nk2ge5k): might be somewhat shorter and clearer
+//
+//nolint:funlen
 func (a *API) handleUserQuery(w http.ResponseWriter, r *http.Request) {
 	begin := time.Now()
 
@@ -145,7 +147,7 @@ func (a *API) handleUserQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	members := a.peer.Current(cluster.PeerTypeStore)
-	if len(members) <= 0 {
+	if len(members) == 0 {
 		// Very odd; we should at least find ourselves!
 		http.Error(w, "no store nodes available", http.StatusServiceUnavailable)
 		return
@@ -167,7 +169,8 @@ func (a *API) handleUserQuery(w http.ResponseWriter, r *http.Request) {
 		u.Path = fmt.Sprintf("store%s", APIPathInternalQuery)
 
 		// Construct a new request.
-		req, err := http.NewRequest(r.Method, u.String(), nil)
+		req, err := http.NewRequestWithContext(
+			r.Context(), r.Method, u.String(), http.NoBody)
 		if err != nil {
 			err = errors.Wrapf(err, "constructing request for %s", hostport)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -186,6 +189,8 @@ func (a *API) handleUserQuery(w http.ResponseWriter, r *http.Request) {
 	c := make(chan response, len(requests))
 	for _, req := range requests {
 		go func(req *http.Request) {
+			// TODO(nk2ge5k): find out how to close this properly
+			//nolint:bodyclose
 			resp, err := a.queryClient.Do(req)
 			c <- response{resp, err}
 		}(req)
@@ -226,7 +231,7 @@ func (a *API) handleUserQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Non-2xx: internal server error or bad request?
 		if (response.resp.StatusCode / 100) != 2 {
-			buf, err := ioutil.ReadAll(response.resp.Body)
+			buf, err := io.ReadAll(response.resp.Body)
 			if err != nil {
 				buf = []byte(err.Error())
 			}
@@ -235,8 +240,10 @@ func (a *API) handleUserQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			response.resp.Body.Close()
 			a.reporter.ReportEvent(Event{
-				Op: "handleUserQuery", Error: fmt.Errorf(response.resp.Status),
-				Msg: fmt.Sprintf("gather query response from store %d/%d: bad status (%s)", i+1, len(responses), strings.TrimSpace(string(buf))),
+				Op: "handleUserQuery", Error: errors.New(response.resp.Status),
+				Msg: fmt.Sprintf(
+					"gather query response from store %d/%d: bad status (%s)",
+					i+1, len(responses), strings.TrimSpace(string(buf))),
 			})
 			qr.ErrorCount++
 			continue
@@ -246,8 +253,10 @@ func (a *API) handleUserQuery(w http.ResponseWriter, r *http.Request) {
 		// For now, just emit an event, so it's possible to triage.
 		if response.resp.StatusCode == http.StatusPartialContent {
 			a.reporter.ReportEvent(Event{
-				Op:  "handleUserQuery",
-				Msg: fmt.Sprintf("gather query response from store %d/%d: partial content", i+1, len(responses)),
+				Op: "handleUserQuery",
+				Msg: fmt.Sprintf(
+					"gather query response from store %d/%d: partial content",
+					i+1, len(responses)),
 			})
 			// TODO(pb): should we signal this in the QueryResult?
 			// It shouldn't be an ErrorCount; maybe something else?
@@ -259,7 +268,9 @@ func (a *API) handleUserQuery(w http.ResponseWriter, r *http.Request) {
 			err = errors.Wrap(err, "decoding partial result")
 			a.reporter.ReportEvent(Event{
 				Op: "handleUserQuery", Error: err,
-				Msg: fmt.Sprintf("gather query response from store %d/%d: invalid response", i+1, len(responses)),
+				Msg: fmt.Sprintf(
+					"gather query response from store %d/%d: invalid response",
+					i+1, len(responses)),
 			})
 			qr.ErrorCount++
 			continue
@@ -362,7 +373,9 @@ func (a *API) handleUserStream(w http.ResponseWriter, r *http.Request) {
 	// We must close the raw chan, which we own.
 	raw := make(chan []byte, 1024)
 	go func() {
-		stream.Execute(r.Context(), peerFactory, readCloserFactory, time.Sleep, time.NewTicker, raw)
+		//nolint:errcheck
+		stream.Execute(
+			r.Context(), peerFactory, readCloserFactory, time.Sleep, time.NewTicker, raw)
 		close(raw)
 	}()
 
@@ -376,8 +389,8 @@ func (a *API) handleUserStream(w http.ResponseWriter, r *http.Request) {
 
 	// Thus, we can range over the deduplicated chan.
 	for record := range deduplicated {
-		w.Write(record)
-		w.Write([]byte{'\n'})
+		w.Write(record)       //nolint:errcheck
+		w.Write([]byte{'\n'}) //nolint:errcheck
 		flusher.Flush()
 	}
 }
@@ -406,6 +419,7 @@ func (a *API) handleInternalStream(w http.ResponseWriter, r *http.Request) {
 
 	// Thus, we range over the records chan.
 	for record := range records {
+		//nolint:errcheck
 		w.Write(record) // includes trailing newline
 		flusher.Flush()
 	}
@@ -421,11 +435,11 @@ func (a *API) handleReplicate(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	lo, hi, n, err := teeRecords(r.Body, segment, &buf)
 	if err != nil {
-		segment.Delete()
+		segment.Delete() //nolint:errcheck
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if n == 0 {
-		segment.Delete()
+		segment.Delete() //nolint:errcheck
 		fmt.Fprintln(w, "No records")
 		return
 	}
@@ -439,14 +453,14 @@ func (a *API) handleReplicate(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "OK")
 }
 
-func (a *API) handleClusterState(w http.ResponseWriter, r *http.Request) {
+func (a *API) handleClusterState(w http.ResponseWriter, _ *http.Request) {
 	buf, err := json.MarshalIndent(a.peer.State(), "", "    ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Write(buf)
+	w.Write(buf) //nolint:errcheck
 }
 
 func teeRecords(src io.Reader, dst ...io.Writer) (lo, hi ulid.ULID, n int, err error) {

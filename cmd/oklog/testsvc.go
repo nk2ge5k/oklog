@@ -13,6 +13,9 @@ import (
 )
 
 func runTestService(args []string) error {
+	//nolint:gosec
+	random := rand.New(rand.NewSource(time.Now().Unix()))
+
 	flagset := flag.NewFlagSet("testsvc", flag.ExitOnError)
 	var (
 		id   = flagset.String("id", "foo", "ID for this instance")
@@ -26,9 +29,8 @@ func runTestService(args []string) error {
 
 	// Populate a set of records.
 	fmt.Fprintf(os.Stderr, "reticulating splines...\n")
-	rand.Seed(time.Now().UnixNano())
 	var (
-		tslen = len(fmt.Sprintf("%s", time.Now().Format(time.RFC3339)))
+		tslen = len(time.Now().Format(time.RFC3339))
 		idlen = len(*id)
 		ctlen = 9                                 // %09d
 		presz = tslen + 1 + idlen + 1 + ctlen + 1 // "2016-01-01T12:34:56+01:00 foo 000000001 "
@@ -45,12 +47,12 @@ func runTestService(args []string) error {
 	)
 	for i := 0; i < len(records); i++ {
 		record := make([]rune, recsz)
-		wordLen := wordMin + rand.Intn(wordMax-wordMin)
+		wordLen := wordMin + random.Intn(wordMax-wordMin)
 		for j := range record {
 			if (j % wordLen) == (wordLen - 1) {
 				record[j] = ' '
 			} else {
-				record[j] = rune(charset[rand.Intn(len(charset))])
+				record[j] = rune(charset[random.Intn(len(charset))])
 			}
 		}
 		records[i] = strings.TrimSpace(string(record))
@@ -76,11 +78,11 @@ func runTestService(args []string) error {
 			if iterationCount%uint64(printEvery) == 0 {
 				fmt.Fprintf(os.Stderr, "%2ds average: %.2f bytes/sec, %.2f records/sec\n", int(d.Seconds()), bytesPerSec, recordsPerSec)
 			}
-
 		}
 	}
 	go printRate(1*time.Second, 10)
-	//go printRate(10*time.Second, 1)
+	// TODO(nk2ge5k): Why this commient is here?
+	// go printRate(10*time.Second, 1)
 
 	// Emit.
 

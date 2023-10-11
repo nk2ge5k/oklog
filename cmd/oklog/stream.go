@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -19,11 +20,21 @@ import (
 func runStream(args []string) error {
 	flagset := flag.NewFlagSet("stream", flag.ExitOnError)
 	var (
-		storeAddr = flagset.String("store", "localhost:7650", "address of store instance to query")
-		q         = flagset.String("q", "", "query expression")
-		regex     = flagset.Bool("regex", false, "parse -q as regular expression")
-		window    = flagset.Duration("window", 3*time.Second, "deduplication window")
-		withulid  = flagset.Bool("ulid", false, "include ULID prefix with each record")
+		storeAddr = flagset.String(
+			"store", "localhost:7650",
+			"address of store instance to query")
+		q = flagset.String(
+			"q", "",
+			"query expression")
+		regex = flagset.Bool(
+			"regex", false,
+			"parse -q as regular expression")
+		window = flagset.Duration(
+			"window", 3*time.Second,
+			"deduplication window")
+		withulid = flagset.Bool(
+			"ulid", false,
+			"include ULID prefix with each record")
 	)
 	flagset.Usage = usageFor(flagset, "oklog stream [flags]")
 	if err := flagset.Parse(args); err != nil {
@@ -45,14 +56,16 @@ func runStream(args []string) error {
 		offset = 0
 	}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf(
-		"http://%s/store%s?q=%s&window=%s%s",
-		hostport,
-		store.APIPathUserStream,
-		url.QueryEscape(*q),
-		url.QueryEscape(window.String()),
-		asRegex,
-	), nil)
+	req, err := http.NewRequestWithContext(
+		context.TODO(),
+		"GET", fmt.Sprintf(
+			"http://%s/store%s?q=%s&window=%s%s",
+			hostport,
+			store.APIPathUserStream,
+			url.QueryEscape(*q),
+			url.QueryEscape(window.String()),
+			asRegex,
+		), http.NoBody)
 	if err != nil {
 		return err
 	}

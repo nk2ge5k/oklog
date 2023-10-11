@@ -18,7 +18,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+//nolint:funlen,gocyclo
 func runForward(args []string) error {
+	//nolint:gosec
+	random := rand.New(rand.NewSource(time.Now().Unix()))
+
 	flagset := flag.NewFlagSet("forward", flag.ExitOnError)
 	var (
 		debug    = flagset.Bool("debug", false, "debug logging")
@@ -31,7 +35,7 @@ func runForward(args []string) error {
 		return err
 	}
 	args = flagset.Args()
-	if len(args) <= 0 {
+	if len(args) == 0 {
 		return errors.New("specify at least one ingest address as an argument")
 	}
 
@@ -86,11 +90,22 @@ func runForward(args []string) error {
 			return err
 		}
 		go func() {
+			// TODO(nk2ge5k): probably can make it a little bit nicer
+
 			mux := http.NewServeMux()
 			registerMetrics(mux)
 			registerProfile(mux)
 			registerHealthCheck(mux)
-			panic(http.Serve(apiListener, mux))
+
+			srv := http.Server{
+				Handler: mux,
+				// TODO(nk2ge5k): do not really understand yet what timeouts are
+				// suppose to be here.
+				ReadTimeout:  0,
+				WriteTimeout: 0,
+			}
+
+			panic(srv.Serve(apiListener))
 		}()
 	}
 
@@ -118,9 +133,8 @@ func runForward(args []string) error {
 	}
 
 	// Shuffle the order.
-	rand.Seed(time.Now().UnixNano())
 	for i := range urls {
-		j := rand.Intn(i + 1)
+		j := random.Intn(i + 1)
 		urls[i], urls[j] = urls[j], urls[i]
 	}
 
@@ -148,36 +162,37 @@ func runForward(args []string) error {
 			proto, suffix := fields[0], fields[1]
 			switch suffix {
 			case "dns", "dnsip":
-				ips, err := net.LookupIP(host)
-				if err != nil {
-					level.Warn(logger).Log("LookupIP", host, "err", err)
+				ips, lerr := net.LookupIP(host)
+				if lerr != nil {
+					level.Warn(logger).Log("LookupIP", host, "err", lerr)
 					backoff = exponential(backoff)
 					time.Sleep(backoff)
 					continue
 				}
-				host = ips[rand.Intn(len(ips))].String()
+				host = ips[random.Intn(len(ips))].String()
 				target.Scheme, target.Host = proto, net.JoinHostPort(host, port)
 
 			case "dnssrv":
-				_, records, err := net.LookupSRV("", proto, host)
-				if err != nil {
-					level.Warn(logger).Log("LookupSRV", host, "err", err)
+				_, records, lerr := net.LookupSRV("", proto, host)
+				if lerr != nil {
+					level.Warn(logger).Log("LookupSRV", host, "err", lerr)
 					backoff = exponential(backoff)
 					time.Sleep(backoff)
 					continue
 				}
-				host = records[rand.Intn(len(records))].Target
-				target.Scheme, target.Host = proto, net.JoinHostPort(host, port) // TODO(pb): take port from SRV record?
+				host = records[random.Intn(len(records))].Target
+				// TODO(pb): take port from SRV record?
+				target.Scheme, target.Host = proto, net.JoinHostPort(host, port)
 
 			case "dnsaddr":
-				names, err := net.LookupAddr(host)
-				if err != nil {
-					level.Warn(logger).Log("LookupAddr", host, "err", err)
+				names, lerr := net.LookupAddr(host)
+				if lerr != nil {
+					level.Warn(logger).Log("LookupAddr", host, "err", lerr)
 					backoff = exponential(backoff)
 					time.Sleep(backoff)
 					continue
 				}
-				host = names[rand.Intn(len(names))]
+				host = names[random.Intn(len(names))]
 				target.Scheme, target.Host = proto, net.JoinHostPort(host, port)
 
 			default:
@@ -199,14 +214,15 @@ func runForward(args []string) error {
 		for ok {
 			// We enter the loop wanting to write s.Text() to the conn.
 			record := fmt.Sprintf("%s%s\n", prefix, s.Text())
-			if n, err := fmt.Fprintf(conn, record); err != nil {
+			if n, err := fmt.Fprint(conn, record); err != nil {
 				disconnects.Inc()
 				level.Warn(logger).Log("disconnected_from", target.String(), "due_to", err)
 				break
 			} else if n < len(record) {
 				shortWrites.Inc()
 				level.Warn(logger).Log("short_write_to", target.String(), "n", n, "less_than", len(record))
-				break // TODO(pb): we should do something more sophisticated here
+				// TODO(pb): we should do something more sophisticated here
+				break
 			}
 
 			// Only once the write succeeds do we scan the next record.

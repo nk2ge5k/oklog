@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"github.com/oklog/ulid"
 )
 
+//nolint:funlen,gocyclo
 func runQuery(args []string) error {
 	flagset := flag.NewFlagSet("query", flag.ExitOnError)
 	var (
@@ -53,7 +55,7 @@ func runQuery(args []string) error {
 
 	fromDuration, durationErr := time.ParseDuration(*from)
 	fromTime, timeErr := time.Parse(time.RFC3339Nano, *from)
-	fromNow := strings.ToLower(*from) == "now"
+	fromNow := strings.EqualFold(*from, "now")
 	var fromStr string
 	switch {
 	case fromNow:
@@ -68,7 +70,7 @@ func runQuery(args []string) error {
 
 	toDuration, durationErr := time.ParseDuration(*to)
 	toTime, timeErr := time.Parse(time.RFC3339, *to)
-	toNow := strings.ToLower(*to) == "now"
+	toNow := strings.EqualFold(*to, "now")
 	var toStr string
 	switch {
 	case toNow:
@@ -91,15 +93,17 @@ func runQuery(args []string) error {
 		asRegex = "&regex=true"
 	}
 
-	req, err := http.NewRequest(method, fmt.Sprintf(
-		"http://%s/store%s?from=%s&to=%s&q=%s%s",
-		hostport,
-		store.APIPathUserQuery,
-		url.QueryEscape(fromStr),
-		url.QueryEscape(toStr),
-		url.QueryEscape(*q),
-		asRegex,
-	), nil)
+	req, err := http.NewRequestWithContext(
+		context.TODO(),
+		method, fmt.Sprintf(
+			"http://%s/store%s?from=%s&to=%s&q=%s%s",
+			hostport,
+			store.APIPathUserQuery,
+			url.QueryEscape(fromStr),
+			url.QueryEscape(toStr),
+			url.QueryEscape(*q),
+			asRegex,
+		), http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -108,6 +112,8 @@ func runQuery(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		req.URL.RawQuery = "" // for pretty print
 		return errors.Errorf("%s %s: %s", req.Method, req.URL.String(), resp.Status)
@@ -137,11 +143,11 @@ func runQuery(args []string) error {
 	case *nocopy:
 		break
 	case *withulid:
-		io.Copy(os.Stdout, result.Records)
+		io.Copy(os.Stdout, result.Records) //nolint:errcheck
 	case *withtime:
-		io.Copy(os.Stdout, parseTime(result.Records))
+		io.Copy(os.Stdout, parseTime(result.Records)) //nolint:errcheck
 	default:
-		io.Copy(os.Stdout, strip(result.Records))
+		io.Copy(os.Stdout, strip(result.Records)) //nolint:errcheck
 	}
 	result.Records.Close()
 
@@ -160,8 +166,8 @@ func strip(r io.Reader) io.Reader {
 	go func() {
 		s := bufio.NewScanner(r)
 		for s.Scan() {
-			pw.Write(s.Bytes()[ulid.EncodedSize+1:])
-			pw.Write([]byte{'\n'})
+			pw.Write(s.Bytes()[ulid.EncodedSize+1:]) //nolint:errcheck
+			pw.Write([]byte{'\n'})                   //nolint:errcheck
 		}
 		pw.CloseWithError(s.Err())
 	}()
@@ -182,9 +188,9 @@ func parseTime(r io.Reader) io.Reader {
 				t    = time.Unix(int64(sec), int64(nsec))
 			)
 
-			pw.Write([]byte(t.Format(time.RFC3339)))
-			pw.Write(s.Bytes()[ulid.EncodedSize:])
-			pw.Write([]byte{'\n'})
+			pw.Write([]byte(t.Format(time.RFC3339))) //nolint:errcheck
+			pw.Write(s.Bytes()[ulid.EncodedSize:])   //nolint:errcheck
+			pw.Write([]byte{'\n'})                   //nolint:errcheck
 		}
 		pw.CloseWithError(s.Err())
 	}()

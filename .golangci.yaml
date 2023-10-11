@@ -1,0 +1,91 @@
+run:
+  concurrency: 8
+  timeout: 10m
+  issues-exit-code: 1
+  tests: false
+  build-tags:
+    - local
+  skip-dirs:
+    - generated
+    - vendor
+  skip-dirs-use-default: false
+  skip-files:
+    - .py$
+    - .j2$
+    - .yaml$
+    - .yml$
+  allow-parallel-runners: true
+  allow-serial-runners: true
+  max-issues-per-linter: 5
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+  path-prefix: ''
+  sort-results: true
+linters-settings:
+  dupl:
+    threshold: 100
+  funlen:
+    lines: 200
+    statements: 50
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
+      - unnecessaryBlock
+  gocyclo:
+    min-complexity: 20
+  goimports:
+    local-prefixes: ruler
+  govet:
+    check-shadowing: true
+  lll:
+    line-length: 140
+  misspell:
+    locale: US
+  nolintlint:
+    allow-leading-space: true
+    allow-unused: false
+    require-explanation: false
+    require-specific: false
+  errcheck:
+    ignore: github.com/go-kit/kit/log:.*
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - errcheck
+    - exportloopref
+    - funlen
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - staticcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace

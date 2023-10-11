@@ -117,7 +117,7 @@ func updateActive(
 // readUntilCanceled blocks until the context is canceled.
 func readUntilCanceled(ctx context.Context, rcf ReadCloserFactory, addr string, sink chan<- []byte, sleep func(time.Duration)) {
 	for {
-		readOnce(ctx, rcf, addr, sink)
+		readOnce(ctx, rcf, addr, sink) //nolint:errcheck
 		select {
 		case <-ctx.Done():
 			return
@@ -152,7 +152,8 @@ func readOnce(ctx context.Context, rcf ReadCloserFactory, addr string, sink chan
 // returns the response body as the ReadCloser.
 func HTTPReadCloserFactory(client Doer, addr2url func(string) string) ReadCloserFactory {
 	return func(ctx context.Context, addr string) (io.ReadCloser, error) {
-		req, err := http.NewRequest("GET", addr2url(addr), nil)
+		req, err := http.NewRequestWithContext(
+			context.TODO(), "GET", addr2url(addr), http.NoBody)
 		if err != nil {
 			return nil, errors.Wrap(err, "NewRequest")
 		}

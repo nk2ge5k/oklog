@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -72,10 +71,10 @@ func (ut *ulidOrTime) Parse(s string) error {
 		return nil
 	}
 	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		ut.ULID.SetEntropy(nil)
+		ut.SetEntropy(nil) //nolint:errcheck
 		// Pass t.UTC to mirror ulid.Now, which does the same.
 		// (We use ulid.Now when generating ULIDs in the ingester.)
-		ut.ULID.SetTime(ulid.Timestamp(t.UTC()))
+		ut.SetTime(ulid.Timestamp(t.UTC())) //nolint:errcheck
 		ut.Time = t
 		return nil
 	}
@@ -84,15 +83,14 @@ func (ut *ulidOrTime) Parse(s string) error {
 
 // QueryResult contains statistics about, and matching records for, a query.
 type QueryResult struct {
-	Params QueryParams `json:"query"`
-
-	NodesQueried    int    `json:"nodes_queried"`
-	SegmentsQueried int    `json:"segments_queried"`
-	MaxDataSetSize  int64  `json:"max_data_set_size"`
-	ErrorCount      int    `json:"error_count,omitempty"`
-	Duration        string `json:"duration"`
-
 	Records io.ReadCloser // TODO(pb): audit to ensure closing is valid throughout
+
+	Duration        string      `json:"duration"`
+	Params          QueryParams `json:"query"`
+	MaxDataSetSize  int64       `json:"max_data_set_size"`
+	NodesQueried    int         `json:"nodes_queried"`
+	SegmentsQueried int         `json:"segments_queried"`
+	ErrorCount      int         `json:"error_count,omitempty"`
 }
 
 // EncodeTo encodes the QueryResult to the HTTP response writer.
@@ -117,7 +115,7 @@ func (qr *QueryResult) EncodeTo(w http.ResponseWriter) {
 		// CopyBuffer can be useful for complex query pipelines.
 		// TODO(pb): validate the 1MB buffer size with profiling
 		buf := make([]byte, 1024*1024)
-		io.CopyBuffer(w, qr.Records, buf)
+		io.CopyBuffer(w, qr.Records, buf) //nolint:errcheck
 		qr.Records.Close()
 	}
 }
@@ -153,6 +151,8 @@ func (qr *QueryResult) DecodeFrom(resp *http.Response) error {
 }
 
 // Merge the other QueryResult into this one.
+//
+//nolint:gocritic
 func (qr *QueryResult) Merge(other QueryResult) error {
 	// Union the simple integer types.
 	qr.NodesQueried += other.NodesQueried
@@ -167,7 +167,7 @@ func (qr *QueryResult) Merge(other QueryResult) error {
 	var buf bytes.Buffer
 	_, _, _, err := mergeRecords(&buf, qr.Records, other.Records)
 	multiCloser{qr.Records, other.Records}.Close()
-	qr.Records = ioutil.NopCloser(&buf)
+	qr.Records = io.NopCloser(&buf)
 
 	// Done.
 	return err
@@ -179,7 +179,7 @@ const (
 	httpHeaderQ               = "X-Oklog-Q"
 	httpHeaderRegex           = "X-Oklog-Regex"
 	httpHeaderNodesQueried    = "X-Oklog-Nodes-Queried"
-	httpHeaderSegmentsQueried = "X-Oklog-Segments-Queried"
+	httpHeaderSegmentsQueried = "X-Oklog-Segments-Queried" //nolint:gosec
 	httpHeaderMaxDataSetSize  = "X-Oklog-Max-Data-Set-Size"
 	httpHeaderErrorCount      = "X-Oklog-Error-Count"
 	httpHeaderDuration        = "X-Oklog-Duration"

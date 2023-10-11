@@ -27,7 +27,6 @@ const (
 type API struct {
 	peer              ClusterPeer
 	log               Log
-	timeout           time.Duration
 	pending           map[string]pendingSegment
 	action            chan func()
 	stop              chan chan struct{}
@@ -35,6 +34,7 @@ type API struct {
 	committedSegments prometheus.Counter
 	committedBytes    prometheus.Counter
 	duration          *prometheus.HistogramVec
+	timeout           time.Duration
 }
 
 type pendingSegment struct {
@@ -206,7 +206,7 @@ func (a *API) handleRead(w http.ResponseWriter, r *http.Request) {
 	}
 	select {
 	case s := <-segment:
-		io.Copy(w, s)
+		io.Copy(w, s) //nolint:errcheck
 	case <-notFound:
 		http.NotFound(w, r)
 	case <-readOpen:
@@ -286,7 +286,7 @@ func (a *API) handleFailed(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *API) handleSegmentStatus(w http.ResponseWriter, r *http.Request) {
+func (a *API) handleSegmentStatus(w http.ResponseWriter, _ *http.Request) {
 	status := make(chan string)
 	a.action <- func() {
 		var buf bytes.Buffer
@@ -299,12 +299,12 @@ func (a *API) handleSegmentStatus(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, <-status)
 }
 
-func (a *API) handleClusterState(w http.ResponseWriter, r *http.Request) {
+func (a *API) handleClusterState(w http.ResponseWriter, _ *http.Request) {
 	buf, err := json.MarshalIndent(a.peer.State(), "", "    ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Write(buf)
+	w.Write(buf) //nolint:errcheck
 }

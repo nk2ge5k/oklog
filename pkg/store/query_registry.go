@@ -96,7 +96,7 @@ func (qr *queryRegistry) Close() error {
 		select {
 		case <-ticker.C:
 			qr.mtx.Lock()
-			if len(qr.reg) <= 0 {
+			if len(qr.reg) == 0 {
 				return nil // empty, we're done
 			}
 
@@ -115,7 +115,7 @@ func (qr *queryRegistry) Match(segment []byte) {
 	defer qr.mtx.RUnlock()
 
 	// Don't bother if we don't have any registered queries.
-	if len(qr.reg) <= 0 {
+	if len(qr.reg) == 0 {
 		return
 	}
 
