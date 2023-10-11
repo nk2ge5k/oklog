@@ -1,6 +1,6 @@
 module oklog
 
-go 1.21.0
+go 1.21
 
 require (
 	github.com/djherbis/buffer v0.0.0-20150721040419-4972e2bf4a27
