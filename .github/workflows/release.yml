@@ -17,7 +17,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Docker push
         if: startsWith(github.ref, 'refs/tags/')
-        run: REVISION="${{ github.ref_name }}" make docker-push
+        run: VENDOR="${{ github.repository_owner }}" REVISION="${{ github.ref_name }}" make docker-push
   release:
     needs:
       - deploy

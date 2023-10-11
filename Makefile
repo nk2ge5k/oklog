@@ -1,6 +1,6 @@
-REPO     = oklog
-VENDOR   = $(shell whoami)
-ROOT_DIR = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+REPO      = oklog
+ROOT_DIR  = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+VENDOR   ?= $(shell whoami)
 
 GO ?= $(shell which go)
 
