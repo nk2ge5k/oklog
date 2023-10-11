@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -131,7 +132,7 @@ func TestHasNonlocal(t *testing.T) {
 			true,
 		},
 	} {
-		t.Run(testcase.name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s %s", testcase.name, testcase.input), func(t *testing.T) {
 			if want, have := testcase.want, hasNonlocal(testcase.input); want != have {
 				t.Errorf("want %v, have %v", want, have)
 			}

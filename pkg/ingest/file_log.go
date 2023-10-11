@@ -32,6 +32,7 @@ func NewFileLog(filesys fs.Filesystem, root string) (Log, error) {
 		return nil, errors.Wrapf(err, "locking %s", lock)
 	}
 	if existed {
+		_ = existed
 		// The previous owner crashed, but we still got the lock.
 		// So this is like Prometheus "crash recovery" mode.
 		// But we don't have anything special we need to do.
@@ -47,9 +48,9 @@ func NewFileLog(filesys fs.Filesystem, root string) (Log, error) {
 }
 
 type fileLog struct {
-	root     string
 	filesys  fs.Filesystem
 	releaser fs.Releaser
+	root     string
 }
 
 // Create returns a new writable segment.
@@ -70,6 +71,7 @@ func (log *fileLog) Oldest() (ReadSegment, error) {
 		oldest = time.Now()
 		chosen string
 	)
+	//nolint:errcheck
 	log.filesys.Walk(log.root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -109,6 +111,7 @@ func (log *fileLog) Oldest() (ReadSegment, error) {
 
 func (log *fileLog) Stats() (LogStats, error) {
 	var stats LogStats
+	//nolint:errcheck
 	log.filesys.Walk(log.root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -138,6 +141,7 @@ func (log *fileLog) Close() error {
 
 func recoverSegments(filesys fs.Filesystem, root string) error {
 	var toRename []string
+	//nolint:errcheck
 	filesys.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

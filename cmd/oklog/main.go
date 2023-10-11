@@ -91,7 +91,7 @@ func (ss *stringslice) Set(s string) error {
 }
 
 func (ss *stringslice) String() string {
-	if len(*ss) <= 0 {
+	if len(*ss) == 0 {
 		return "..."
 	}
 	return strings.Join(*ss, ", ")
@@ -123,7 +123,7 @@ func parseAddr(addr string, defaultPort int) (network, address, host string, por
 	case u.Scheme != "" && u.Opaque != "" && u.Host == "" && u.Path == "": // "host:1234"
 		u.Scheme, u.Opaque, u.Host, u.Path = "tcp", "", net.JoinHostPort(u.Scheme, u.Opaque), ""
 	case u.Scheme != "" && u.Opaque == "" && u.Host != "" && u.Path == "": // "tcp://host[:1234]"
-		if _, _, err := net.SplitHostPort(u.Host); err != nil {
+		if _, _, serr := net.SplitHostPort(u.Host); serr != nil {
 			u.Host = net.JoinHostPort(u.Host, strconv.Itoa(defaultPort))
 		}
 	default:
@@ -143,7 +143,7 @@ func parseAddr(addr string, defaultPort int) (network, address, host string, por
 }
 
 func registerHealthCheck(mux *http.ServeMux) {
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "OK")
 	})
@@ -185,9 +185,12 @@ func hasNonlocal(clusterPeers stringslice) bool {
 		if host, _, err := net.SplitHostPort(peer); err == nil {
 			peer = host
 		}
-		if ip := net.ParseIP(peer); ip != nil && !ip.IsLoopback() {
+
+		ip := net.ParseIP(peer)
+		if ip != nil && !ip.IsLoopback() {
 			return true
-		} else if ip == nil && strings.ToLower(peer) != "localhost" {
+		}
+		if ip == nil && !strings.EqualFold(peer, "localhost") {
 			return true
 		}
 	}
@@ -200,7 +203,7 @@ func isUnroutable(addr string) bool {
 	}
 	if ip := net.ParseIP(addr); ip != nil && (ip.IsUnspecified() || ip.IsLoopback()) {
 		return true // typically 0.0.0.0 or localhost
-	} else if ip == nil && strings.ToLower(addr) == "localhost" {
+	} else if ip == nil && strings.EqualFold(addr, "localhost") {
 		return true
 	}
 	return false

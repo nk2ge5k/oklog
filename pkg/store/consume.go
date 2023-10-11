@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"oklog/pkg/cluster"
@@ -24,20 +24,20 @@ import (
 type Consumer struct {
 	peer               *cluster.Peer
 	client             *http.Client
-	segmentTargetSize  int64
-	segmentTargetAge   time.Duration
-	segmentDelay       time.Duration
-	replicationFactor  int
-	gatherErrors       int                 // heuristic to move out of gather state
 	pending            map[string][]string // ingester: segment IDs
 	active             *bytes.Buffer       // merged pending segments
-	activeSince        time.Time           // active segment has been "open" since this time
 	stop               chan chan struct{}
 	consumedSegments   prometheus.Counter
 	consumedBytes      prometheus.Counter
 	replicatedSegments prometheus.Counter
 	replicatedBytes    prometheus.Counter
 	reporter           EventReporter
+	activeSince        time.Time // active segment has been "open" since this time
+	segmentTargetSize  int64
+	segmentTargetAge   time.Duration
+	segmentDelay       time.Duration
+	replicationFactor  int
+	gatherErrors       int // heuristic to move out of gather state
 }
 
 // NewConsumer creates a consumer.
@@ -101,6 +101,7 @@ func (c *Consumer) Stop() {
 
 type stateFn func() stateFn
 
+//nolint:funlen
 func (c *Consumer) gather() stateFn {
 	// A naïve way to break out of the gather loop in atypical conditions.
 	// TODO(pb): this obviously needs more thought and consideration
@@ -140,22 +141,31 @@ func (c *Consumer) gather() stateFn {
 	}
 
 	// Get the oldest segment ID from a random ingester.
+	//nolint:gosec
 	instance := instances[rand.Intn(len(instances))]
-	nextResp, err := c.client.Get(fmt.Sprintf("http://%s/ingest%s", instance, ingest.APIPathNext))
+	//nolint:noctx
+	nextResp, err := c.client.Get(
+		fmt.Sprintf("http://%s/ingest%s", instance, ingest.APIPathNext))
 	if err != nil {
 		c.reporter.ReportEvent(Event{
-			Op: "gather", Warning: err,
-			Msg: fmt.Sprintf("ingester %s, during %s: fatal error", instance, ingest.APIPathNext),
+			Op:      "gather",
+			Warning: err,
+			Msg: fmt.Sprintf(
+				"ingester %s, during %s: fatal error",
+				instance, ingest.APIPathNext),
 		})
 		c.gatherErrors++
 		return c.gather
 	}
 	defer nextResp.Body.Close()
-	nextRespBody, err := ioutil.ReadAll(nextResp.Body)
+	nextRespBody, err := io.ReadAll(nextResp.Body)
 	if err != nil {
 		c.reporter.ReportEvent(Event{
-			Op: "gather", Warning: err,
-			Msg: fmt.Sprintf("ingester %s, during %s: read error", instance, ingest.APIPathNext),
+			Op:      "gather",
+			Warning: err,
+			Msg: fmt.Sprintf(
+				"ingester %s, during %s: read error",
+				instance, ingest.APIPathNext),
 		})
 		c.gatherErrors++
 		return c.gather
@@ -168,8 +178,11 @@ func (c *Consumer) gather() stateFn {
 	}
 	if nextResp.StatusCode != http.StatusOK {
 		c.reporter.ReportEvent(Event{
-			Op: "gather", Warning: fmt.Errorf(nextResp.Status),
-			Msg: fmt.Sprintf("ingester %s, during %s: bad response code", instance, ingest.APIPathNext),
+			Op:      "gather",
+			Warning: errors.New(nextResp.Status),
+			Msg: fmt.Sprintf(
+				"ingester %s, during %s: bad response code",
+				instance, ingest.APIPathNext),
 		})
 		c.gatherErrors++
 		return c.gather
@@ -181,14 +194,19 @@ func (c *Consumer) gather() stateFn {
 	c.pending[instance] = append(c.pending[instance], nextID)
 
 	// Read the segment.
-	readResp, err := c.client.Get(fmt.Sprintf("http://%s/ingest%s?id=%s", instance, ingest.APIPathRead, nextID))
+	//nolint:noctx
+	readResp, err := c.client.Get(
+		fmt.Sprintf("http://%s/ingest%s?id=%s", instance, ingest.APIPathRead, nextID))
 	if err != nil {
 		// Reading failed, so we can't possibly commit the segment.
 		// The simplest thing to do now is to fail everything.
 		// TODO(pb): this could be improved i.e. made more granular
 		c.reporter.ReportEvent(Event{
-			Op: "gather", Error: err,
-			Msg: fmt.Sprintf("ingester %s, during %s: fatal error", instance, ingest.APIPathRead),
+			Op:    "gather",
+			Error: err,
+			Msg: fmt.Sprintf(
+				"ingester %s, during %s: fatal error",
+				instance, ingest.APIPathRead),
 		})
 		c.gatherErrors++
 		return c.fail // fail everything
@@ -196,8 +214,11 @@ func (c *Consumer) gather() stateFn {
 	defer readResp.Body.Close()
 	if readResp.StatusCode != http.StatusOK {
 		c.reporter.ReportEvent(Event{
-			Op: "gather", Error: fmt.Errorf(readResp.Status),
-			Msg: fmt.Sprintf("ingester %s, during %s: bad response code", instance, ingest.APIPathRead),
+			Op:    "gather",
+			Error: errors.New(readResp.Status),
+			Msg: fmt.Sprintf(
+				"ingester %s, during %s: bad response code",
+				instance, ingest.APIPathRead),
 		})
 		c.gatherErrors++
 		return c.fail // fail everything, same as above
@@ -208,10 +229,15 @@ func (c *Consumer) gather() stateFn {
 		cw  countingWriter
 		tmp bytes.Buffer
 	)
-	if _, _, _, err := mergeRecords(&tmp, c.active, io.TeeReader(readResp.Body, &cw)); err != nil {
+
+	_, _, _, merr := mergeRecords(&tmp, c.active, io.TeeReader(readResp.Body, &cw))
+	if merr != nil {
 		c.reporter.ReportEvent(Event{
-			Op: "gather", Error: err,
-			Msg: fmt.Sprintf("ingester %s, during %s: fatal error", instance, "mergeRecords"),
+			Op:    "gather",
+			Error: merr,
+			Msg: fmt.Sprintf(
+				"ingester %s, during %s: fatal error",
+				instance, "mergeRecords"),
 		})
 		c.gatherErrors++
 		return c.fail // fail everything, same as above
@@ -236,7 +262,10 @@ func (c *Consumer) replicate() stateFn {
 	)
 	if want, have := c.replicationFactor, len(peers); have < want {
 		c.reporter.ReportEvent(Event{
-			Op: "replicate", Warning: fmt.Errorf("replication factor %d, available peers %d: replication currently impossible", want, have),
+			Op: "replicate",
+			Warning: fmt.Errorf(
+				"replication factor %d, available peers %d: replication currently impossible",
+				want, have),
 		})
 		return c.fail // can't do anything here
 	}
@@ -248,19 +277,23 @@ func (c *Consumer) replicate() stateFn {
 			bodyType = "application/binary"
 			body     = bytes.NewReader(c.active.Bytes())
 		)
+		//nolint:noctx
 		resp, err := c.client.Post(uri, bodyType, body)
 		if err != nil {
 			c.reporter.ReportEvent(Event{
-				Op: "replicate", Error: err,
-				Msg: fmt.Sprintf("target %s, during %s: fatal error", target, APIPathReplicate),
+				Op:    "replicate",
+				Error: err,
+				Msg:   fmt.Sprintf("target %s, during %s: fatal error", target, APIPathReplicate),
 			})
 			continue // we'll try another one
 		}
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			c.reporter.ReportEvent(Event{
-				Op: "replicate", Error: fmt.Errorf(resp.Status),
-				Msg: fmt.Sprintf("target %s, during %s: bad status code", target, APIPathReplicate),
+				Op:    "replicate",
+				Error: errors.New(resp.Status),
+				Msg: fmt.Sprintf(
+					"target %s, during %s: bad status code", target, APIPathReplicate),
 			})
 			continue // we'll try another one
 		}
@@ -268,7 +301,10 @@ func (c *Consumer) replicate() stateFn {
 	}
 	if replicated < c.replicationFactor {
 		c.reporter.ReportEvent(Event{
-			Op: "replicate", Error: fmt.Errorf("failed to fully replicate: want %d, have %d", c.replicationFactor, replicated),
+			Op: "replicate",
+			Error: fmt.Errorf(
+				"failed to fully replicate: want %d, have %d",
+				c.replicationFactor, replicated),
 		})
 		return c.fail // harsh, but OK
 	}
@@ -298,19 +334,23 @@ func (c *Consumer) resetVia(commitOrFailed string) stateFn {
 			go func(instance, id string) {
 				defer wg.Done()
 				uri := fmt.Sprintf("http://%s/ingest/%s?id=%s", instance, commitOrFailed, id)
+				//nolint:noctx
 				resp, err := c.client.Post(uri, "text/plain", nil)
 				if err != nil {
 					c.reporter.ReportEvent(Event{
-						Op: commitOrFailed, Error: err,
-						Msg: fmt.Sprintf("instance %s, during %s: fatal error", instance, "POST"),
+						Op:    commitOrFailed,
+						Error: err,
+						Msg:   fmt.Sprintf("instance %s, during %s: fatal error", instance, "POST"),
 					})
 					return
 				}
 				resp.Body.Close()
 				if resp.StatusCode != http.StatusOK {
 					c.reporter.ReportEvent(Event{
-						Op: commitOrFailed, Error: fmt.Errorf(resp.Status),
-						Msg: fmt.Sprintf("instance %s, during %s: bad status code", instance, "POST"),
+						Op:    commitOrFailed,
+						Error: errors.New(resp.Status),
+						Msg: fmt.Sprintf(
+							"instance %s, during %s: bad status code", instance, "POST"),
 					})
 					return
 				}

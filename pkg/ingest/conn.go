@@ -58,8 +58,8 @@ func HandleConnections(
 		m.register(conn)
 		go func() {
 			defer conn.Close()
-			h(rfac(conn), w, idGen, connectedClients)
-			w.Stop() // make sure it's flushed
+			h(rfac(conn), w, idGen, connectedClients) //nolint:errcheck
+			w.Stop()                                  // make sure it's flushed
 			m.remove(conn)
 		}()
 	}
@@ -74,7 +74,7 @@ func HandleFastWriter(r record.Reader, w *Writer, idGen IDGenerator, connectedCl
 	defer connectedClients.Dec()
 
 	for {
-		record, err := r()
+		rec, err := r()
 		if err == io.EOF {
 			return nil
 		}
@@ -82,7 +82,7 @@ func HandleFastWriter(r record.Reader, w *Writer, idGen IDGenerator, connectedCl
 			return err
 		}
 		// TODO(pb): short writes are possible
-		if _, err := fmt.Fprintf(w, "%s %s", idGen(), record); err != nil {
+		if _, err := fmt.Fprintf(w, "%s %s", idGen(), rec); err != nil {
 			return err
 		}
 	}
@@ -95,7 +95,7 @@ func HandleDurableWriter(r record.Reader, w *Writer, idGen IDGenerator, connecte
 	defer connectedClients.Dec()
 
 	for {
-		record, err := r()
+		rec, err := r()
 		if err == io.EOF {
 			return nil
 		}
@@ -103,7 +103,7 @@ func HandleDurableWriter(r record.Reader, w *Writer, idGen IDGenerator, connecte
 			return err
 		}
 		// TODO(pb): short writes are possible
-		if _, err := fmt.Fprintf(w, "%s %s", idGen(), record); err != nil {
+		if _, err := fmt.Fprintf(w, "%s %s", idGen(), rec); err != nil {
 			return err
 		}
 		if err := w.Sync(); err != nil {
@@ -166,7 +166,7 @@ func (m *connectionManager) closeAllConnections() {
 func (m *connectionManager) isEmpty() bool {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
-	return len(m.active) <= 0
+	return len(m.active) == 0
 }
 
 // streamClock is a logical clock that is initialized to start at a random offset
@@ -181,6 +181,7 @@ type streamClock struct {
 
 func newStreamClock() *streamClock {
 	var sc streamClock
+	//nolint:gosec
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	binary.BigEndian.PutUint16(sc.prefix[:], uint16(r.Int()))

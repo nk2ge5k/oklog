@@ -21,6 +21,8 @@ var ErrShortRead = errors.New("short read")
 // mergeRecords takes a set of io.Readers that contain ULID-prefixed records in
 // individually-sorted order, and writes the globally-sorted output to the
 // io.Writer.
+//
+//nolint:gocyclo,unparam
 func mergeRecords(w io.Writer, readers ...io.Reader) (low, high ulid.ULID, n int64, err error) {
 	// Optimization and safety.
 	if len(readers) == 0 {
@@ -49,8 +51,8 @@ func mergeRecords(w io.Writer, readers ...io.Reader) (low, high ulid.ULID, n int
 	advance := func(i int) error {
 		if ok[i] = scanner[i].Scan(); ok[i] {
 			record[i] = scanner[i].Bytes()
-			// Something nice, like bytes.Fields, is too slow!
-			//id[i] = bytes.Fields(record[i])[0]
+			// TODO(nk2ge5k): Something nice, like bytes.Fields, is too slow!
+			// id[i] = bytes.Fields(record[i])[0]
 			if len(record[i]) < ulid.EncodedSize {
 				panic("short record")
 			}
@@ -93,8 +95,8 @@ func mergeRecords(w io.Writer, readers ...io.Reader) (low, high ulid.ULID, n int
 		// The first ULID from this batch of readers is the low ULID.
 		// The last ULID from this batch of readers is the high ULID.
 		// Record the first ULID as low, and the latest ULID as high.
-		chosenULID.UnmarshalText(id[chosenIndex])
-		if first { // record first as low
+		chosenULID.UnmarshalText(id[chosenIndex]) //nolint:errcheck
+		if first {                                // record first as low
 			low, first = chosenULID, false
 		} else if !first && chosenULID == high { // duplicate!
 			if err := advance(chosenIndex); err != nil {
@@ -123,6 +125,8 @@ func mergeRecords(w io.Writer, readers ...io.Reader) (low, high ulid.ULID, n int
 // mergeRecordsToLog is a specialization of mergeRecords.
 // It enforces segmentTargetSize by creating WriteSegments as necessary.
 // It has best-effort semantics, e.g. it won't split large records.
+//
+//nolint:funlen,gocyclo
 func mergeRecordsToLog(dst Log, segmentTargetSize int64, readers ...io.Reader) (n int64, err error) {
 	// Optimization and safety.
 	if len(readers) == 0 {
@@ -170,14 +174,14 @@ func mergeRecordsToLog(dst Log, segmentTargetSize int64, readers ...io.Reader) (
 	advance := func(i int) error {
 		if ok[i] = scanner[i].Scan(); ok[i] {
 			record[i] = scanner[i].Bytes()
-			// Something nice, like bytes.Fields, is too slow!
-			//id[i] = bytes.Fields(record[i])[0]
+			// TODO(nk2ge5k): Something nice, like bytes.Fields, is too slow!
+			// id[i] = bytes.Fields(record[i])[0]
 			if len(record[i]) < ulid.EncodedSize {
 				panic("short record")
 			}
 			id[i] = record[i][:ulid.EncodedSize]
-		} else if err := scanner[i].Err(); err != nil && err != io.EOF {
-			return err
+		} else if serr := scanner[i].Err(); serr != nil && serr != io.EOF {
+			return serr
 		}
 		return nil
 	}
@@ -186,8 +190,8 @@ func mergeRecordsToLog(dst Log, segmentTargetSize int64, readers ...io.Reader) (
 	for i := 0; i < len(readers); i++ {
 		scanner[i] = bufio.NewScanner(readers[i])
 		scanner[i].Split(scanLinesPreserveNewline)
-		if err := advance(i); err != nil {
-			return n, err
+		if aerr := advance(i); aerr != nil {
+			return n, aerr
 		}
 	}
 
@@ -214,29 +218,29 @@ func mergeRecordsToLog(dst Log, segmentTargetSize int64, readers ...io.Reader) (
 		// The first ULID from this batch of readers is the low ULID.
 		// The last ULID from this batch of readers is the high ULID.
 		// Record the first ULID as low, and the latest ULID as high.
-		chosenULID.UnmarshalText(id[chosenIndex])
-		if first { // record first as low
+		chosenULID.UnmarshalText(id[chosenIndex]) //nolint:errcheck
+		if first {                                // record first as low
 			low, first = chosenULID, false
 		} else if !first && chosenULID == high { // duplicate!
-			if err := advance(chosenIndex); err != nil {
-				return n, err
+			if aerr := advance(chosenIndex); aerr != nil {
+				return n, aerr
 			}
 			continue
 		}
 		high = chosenULID // record most recent as high
 
 		// Write the record.
-		n0, err := writeSegment.Write(record[chosenIndex])
-		if err != nil {
-			return n, err
+		n0, werr := writeSegment.Write(record[chosenIndex])
+		if werr != nil {
+			return n, werr
 		}
 		n += int64(n0)
 		nSegment += int64(n0)
 
 		if nSegment >= segmentTargetSize {
 			// We've met our target size. Close the segment.
-			if err := writeSegment.Close(low, high); err != nil {
-				return n, err
+			if cerr := writeSegment.Close(low, high); cerr != nil {
+				return n, cerr
 			}
 
 			// Create a new segment, and reset our per-segment state.
@@ -249,14 +253,14 @@ func mergeRecordsToLog(dst Log, segmentTargetSize int64, readers ...io.Reader) (
 		}
 
 		// Advance the chosen scanner by 1 record.
-		if err := advance(chosenIndex); err != nil {
-			return n, err
+		if aerr := advance(chosenIndex); aerr != nil {
+			return n, aerr
 		}
 	}
 
 	if nSegment > 0 {
-		if err = writeSegment.Close(low, high); err != nil {
-			return n, err
+		if cerr := writeSegment.Close(low, high); cerr != nil {
+			return n, cerr
 		}
 	} else {
 		err = writeSegment.Delete()
@@ -269,7 +273,9 @@ func mergeRecordsToLog(dst Log, segmentTargetSize int64, readers ...io.Reader) (
 // Records are yielded in time order, oldest first, hopefully efficiently!
 // Only records passing the recordFilter are yielded.
 // The sz of the segment files can be used as a proxy for read effort.
-func newQueryReadCloser(fs fs.Filesystem, segments []readSegment, pass recordFilter, bufsz int64, reporter EventReporter) (rc io.ReadCloser, sz int64, err error) {
+func newQueryReadCloser(
+	fsys fs.Filesystem, segments []readSegment, pass recordFilter, bufsz int64,
+	reporter EventReporter) (rc io.ReadCloser, sz int64, err error) {
 	// We will build successive ReadClosers for each batch.
 	var rcs []io.ReadCloser
 
@@ -301,7 +307,7 @@ func newQueryReadCloser(fs fs.Filesystem, segments []readSegment, pass recordFil
 
 		default:
 			// A batch of N requires a K-way merge.
-			cfrcs, batchsz, err := makeConcurrentFilteringReadClosers(fs, batch, pass, bufsz)
+			cfrcs, batchsz, err := makeConcurrentFilteringReadClosers(fsys, batch, pass, bufsz)
 			if err != nil {
 				return nil, sz, err
 			}
@@ -340,7 +346,7 @@ func batchSegments(segments []readSegment) [][]readSegment {
 	)
 	for i := range segments {
 		switch {
-		case len(group) <= 0:
+		case len(group) == 0:
 			// If the group is empty, it gets the segment.
 			group = []readSegment{segments[i]}
 			b = ranges[i].b
@@ -366,7 +372,9 @@ func batchSegments(segments []readSegment) [][]readSegment {
 	return result
 }
 
-func makeConcurrentFilteringReadClosers(fs fs.Filesystem, segments []readSegment, pass recordFilter, bufsz int64) (rcs []io.ReadCloser, sz int64, err error) {
+//nolint:unparam
+func makeConcurrentFilteringReadClosers(
+	_ fs.Filesystem, segments []readSegment, pass recordFilter, bufsz int64) (rcs []io.ReadCloser, sz int64, err error) {
 	rcs = make([]io.ReadCloser, len(segments))
 	for i := range segments {
 		sz += segments[i].size
@@ -394,14 +402,14 @@ func newConcurrentFilteringReadCloser(src io.ReadCloser, pass recordFilter, bufs
 			case err == io.ErrClosedPipe:
 				return // no need to close
 			case err != nil:
-				w.CloseWithError(err)
+				w.CloseWithError(err) //nolint:errcheck
 				return
 			case n < len(line):
-				w.CloseWithError(io.ErrShortWrite)
+				w.CloseWithError(io.ErrShortWrite) //nolint:errcheck
 				return
 			}
 		}
-		w.CloseWithError(s.Err())
+		w.CloseWithError(s.Err()) //nolint:errcheck
 	}()
 	return r
 }
@@ -462,7 +470,7 @@ func (rc *mergeReadCloser) Read(p []byte) (int, error) {
 		switch {
 		case smallest < 0, bytes.Compare(rc.id[i], rc.id[smallest]) < 0:
 			smallest = i
-		case bytes.Compare(rc.id[i], rc.id[smallest]) == 0: // duplicate
+		case bytes.Equal(rc.id[i], rc.id[smallest]): // duplicate
 			if err := rc.advance(i); err != nil {
 				return 0, err
 			}

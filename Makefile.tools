@@ -1,0 +1,39 @@
+GOLANGCI_LINT_VERSION := v1.54.2
+GOIMPORTS_VERSION := latest
+YAMLFMT_VERSION := v0.10.0
+
+KERNEL_NAME = $(shell uname -s)
+MACHINE = $(shell uname -m)
+
+TMP := $(ROOT_DIR)/.tmp/$(KERNEL_NAME)/$(MACHINE)
+TMP_BIN = $(TMP)/bin
+TMP_VERSIONS := $(TMP)/versions
+
+BUF := $(TMP_VERSIONS)/buf/$(BUF_VERSION)
+GOLANGCI_LINT := $(TMP_VERSIONS)/golangci-lint/$(GOCILINT_VERSION)
+GOIMPORTS := $(TMP_VERSIONS)/goimports/$(GOIMPORTS_VERSION)
+YAMLFMT := $(TMP_VERSIONS)/yamlfmt/$(YAMLFMT_VERSION)
+
+export GOBIN := $(abspath $(TMP_BIN))
+export PATH := $(GOBIN):$(PYTHON_VENV_DIR)/bin:$(PATH)
+
+$(GOLANGCI_LINT):
+	@echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION)..."
+	@$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	@rm -rf $(dir $(GOLANGCI_LINT))
+	@mkdir -p $(dir $(GOLANGCI_LINT))
+	@touch $(GOLANGCI_LINT)
+
+$(GOIMPORTS):
+	@echo "Installing goimports $(GOIMPORTS_VERSION)..."
+	@$(GO) install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
+	@rm -rf $(dir $(GOIMPORTS))
+	@mkdir -p $(dir $(GOIMPORTS))
+	@touch $(GOIMPORTS)
+
+$(YAMLFMT):
+	@echo "Installing yamlfmt $(YAMLFMT_VERSION)..."
+	@$(GO) install github.com/google/yamlfmt/cmd/yamlfmt@$(YAMLFMT_VERSION)
+	@rm -rf $(dir $(YAMLFMT))
+	@mkdir -p $(dir $(YAMLFMT))
+	@touch $(YAMLFMT)

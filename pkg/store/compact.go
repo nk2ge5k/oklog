@@ -14,14 +14,14 @@ import (
 // segments, and enforcing the retention window.
 type Compacter struct {
 	log               Log
-	segmentTargetSize int64
-	retain            time.Duration
-	purge             time.Duration
 	stop              chan chan struct{}
 	compactDuration   *prometheus.HistogramVec
 	trashSegments     *prometheus.CounterVec
 	purgeSegments     *prometheus.CounterVec
 	reporter          EventReporter
+	segmentTargetSize int64
+	retain            time.Duration
+	purge             time.Duration
 }
 
 // NewCompacter creates a Compacter.
@@ -82,6 +82,7 @@ func (c *Compacter) Stop() {
 	<-q
 }
 
+//nolint:unparam
 func (c *Compacter) compact(kind string, getSegments func() ([]ReadSegment, error)) (compacted int, result string) {
 	defer func(begin time.Time) {
 		c.compactDuration.WithLabelValues(

@@ -7,12 +7,12 @@ import (
 
 // Event is emitted by store components, typically when things go wrong.
 type Event struct {
-	Debug   bool
-	Op      string
-	File    string
 	Error   error
 	Warning error
+	Op      string
+	File    string
 	Msg     string
+	Debug   bool
 }
 
 // EventReporter can receive (and, presumably, do something with) Events.
@@ -26,6 +26,8 @@ type EventReporter interface {
 type LogReporter struct{ log.Logger }
 
 // ReportEvent implements EventReporter.
+//
+//nolint:gocritic
 func (r LogReporter) ReportEvent(e Event) {
 	if e.Op == "" {
 		e.Op = "undefined"

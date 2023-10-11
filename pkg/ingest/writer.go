@@ -157,7 +157,7 @@ func (w *Writer) closeOnly() {
 		if w.cursz <= 0 {
 			// closeOnly is called, but the segment is empty!
 			// Delete the active segment instead of syncing it.
-			w.curr.Delete()
+			w.curr.Delete() //nolint:errcheck
 		} else {
 			if err := w.curr.Close(); err != nil {
 				panic(err)

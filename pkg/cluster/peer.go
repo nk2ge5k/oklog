@@ -9,7 +9,7 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -56,7 +56,11 @@ func NewPeer(
 	t PeerType, apiPort int,
 	logger log.Logger,
 ) (*Peer, error) {
-	level.Debug(logger).Log("bind_addr", bindAddr, "bind_port", bindPort, "ParseIP", net.ParseIP(bindAddr).String())
+	level.Debug(logger).Log(
+		"bind_addr", bindAddr,
+		"bind_port", bindPort,
+		"ParseIP", net.ParseIP(bindAddr).String(),
+	)
 
 	d := newDelegate(logger)
 	config := memberlist.DefaultLANConfig()
@@ -65,11 +69,14 @@ func NewPeer(
 		config.BindAddr = bindAddr
 		config.BindPort = bindPort
 		if advertiseAddr != "" {
-			level.Debug(logger).Log("advertise_addr", advertiseAddr, "advertise_port", advertisePort)
+			level.Debug(logger).Log(
+				"advertise_addr", advertiseAddr,
+				"advertise_port", advertisePort,
+			)
 			config.AdvertiseAddr = advertiseAddr
 			config.AdvertisePort = advertisePort
 		}
-		config.LogOutput = ioutil.Discard
+		config.LogOutput = io.Discard
 		config.Delegate = d
 		config.Events = d
 	}

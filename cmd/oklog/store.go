@@ -38,25 +38,56 @@ var (
 	defaultStorePath = filepath.Join("data", "store")
 )
 
+//nolint:funlen
 func runStore(args []string) error {
 	flagset := flag.NewFlagSet("store", flag.ExitOnError)
 	var (
-		debug                    = flagset.Bool("debug", false, "debug logging")
-		apiAddr                  = flagset.String("api", defaultAPIAddr, "listen address for store API")
-		clusterBindAddr          = flagset.String("cluster", defaultClusterAddr, "listen address for cluster")
-		clusterAdvertiseAddr     = flagset.String("cluster.advertise-addr", "", "optional, explicit address to advertise in cluster")
-		storePath                = flagset.String("store.path", defaultStorePath, "path holding segment files for storage tier")
-		segmentConsumers         = flagset.Int("store.segment-consumers", defaultStoreSegmentConsumers, "concurrent segment consumers")
-		segmentTargetSize        = flagset.Int64("store.segment-target-size", defaultStoreSegmentTargetSize, "try to keep store segments about this size")
-		segmentTargetAge         = flagset.Duration("store.segment-target-age", defaultStoreSegmentTargetAge, "replicate once the aggregate segment is this old")
-		segmentDelay             = flagset.Duration("store.segment-delay", defaultStoreSegmentDelay, "request next segment files after this delay")
-		segmentBufferSize        = flagset.Int64("store.segment-buffer-size", defaultStoreSegmentBufferSize, "per-segment in-memory read buffer during queries")
-		segmentReplicationFactor = flagset.Int("store.segment-replication-factor", defaultStoreSegmentReplicationFactor, "how many copies of each segment to replicate")
-		segmentRetain            = flagset.Duration("store.segment-retain", defaultStoreSegmentRetain, "retention period for segment files")
-		segmentPurge             = flagset.Duration("store.segment-purge", defaultStoreSegmentPurge, "purge deleted segment files after this long")
-		uiLocal                  = flagset.Bool("ui.local", false, "ignore embedded files and go straight to the filesystem")
-		filesystem               = flagset.String("filesystem", defaultFilesystem, "real, virtual, nop")
-		clusterPeers             = stringslice{}
+		debug = flagset.Bool(
+			"debug", false,
+			"debug logging")
+		apiAddr = flagset.String(
+			"api", defaultAPIAddr,
+			"listen address for store API")
+		clusterBindAddr = flagset.String(
+			"cluster", defaultClusterAddr,
+			"listen address for cluster")
+		clusterAdvertiseAddr = flagset.String(
+			"cluster.advertise-addr", "",
+			"optional, explicit address to advertise in cluster")
+		storePath = flagset.String(
+			"store.path", defaultStorePath,
+			"path holding segment files for storage tier")
+		segmentConsumers = flagset.Int(
+			"store.segment-consumers", defaultStoreSegmentConsumers,
+			"concurrent segment consumers")
+		segmentTargetSize = flagset.Int64(
+			"store.segment-target-size", defaultStoreSegmentTargetSize,
+			"try to keep store segments about this size")
+		segmentTargetAge = flagset.Duration(
+			"store.segment-target-age", defaultStoreSegmentTargetAge,
+			"replicate once the aggregate segment is this old")
+		segmentDelay = flagset.Duration(
+			"store.segment-delay", defaultStoreSegmentDelay,
+			"request next segment files after this delay")
+		segmentBufferSize = flagset.Int64(
+			"store.segment-buffer-size", defaultStoreSegmentBufferSize,
+			"per-segment in-memory read buffer during queries")
+		segmentReplicationFactor = flagset.Int(
+			"store.segment-replication-factor", defaultStoreSegmentReplicationFactor,
+			"how many copies of each segment to replicate")
+		segmentRetain = flagset.Duration(
+			"store.segment-retain", defaultStoreSegmentRetain,
+			"retention period for segment files")
+		segmentPurge = flagset.Duration(
+			"store.segment-purge", defaultStoreSegmentPurge,
+			"purge deleted segment files after this long")
+		uiLocal = flagset.Bool(
+			"ui.local", false,
+			"ignore embedded files and go straight to the filesystem")
+		filesystem = flagset.String(
+			"filesystem", defaultFilesystem,
+			"real, virtual, nop")
+		clusterPeers = stringslice{}
 	)
 	flagset.Var(&clusterPeers, "peer", "cluster peer host:port (repeatable)")
 	flagset.Usage = usageFor(flagset, "oklog store [flags]")
@@ -174,11 +205,18 @@ func runStore(args []string) error {
 		return err
 	}
 	if hasNonlocal(clusterPeers) && isUnroutable(advertiseIP.String()) {
-		level.Warn(logger).Log("err", "this node advertises itself on an unroutable IP", "ip", advertiseIP.String())
-		level.Warn(logger).Log("err", "this node will be unreachable in the cluster")
-		level.Warn(logger).Log("err", "provide -cluster.advertise-addr as a routable IP address or hostname")
+		level.Warn(logger).Log(
+			"err", "this node advertises itself on an unroutable IP",
+			"ip", advertiseIP.String())
+		level.Warn(logger).Log(
+			"err", "this node will be unreachable in the cluster")
+		level.Warn(logger).Log(
+			"err", "provide -cluster.advertise-addr as a routable IP address or hostname")
 	}
-	level.Info(logger).Log("user_bind_host", clusterBindHost, "user_advertise_host", clusterAdvertiseHost, "calculated_advertise_ip", advertiseIP)
+	level.Info(logger).Log(
+		"user_bind_host", clusterBindHost,
+		"user_advertise_host", clusterAdvertiseHost,
+		"calculated_advertise_ip", advertiseIP)
 	clusterAdvertiseHost = advertiseIP.String()
 	if clusterAdvertisePort == 0 {
 		clusterAdvertisePort = clusterBindPort
@@ -213,8 +251,8 @@ func runStore(args []string) error {
 		return err
 	}
 	defer func() {
-		if err := storeLog.Close(); err != nil {
-			level.Error(logger).Log("err", err)
+		if cerr := storeLog.Close(); cerr != nil {
+			level.Error(logger).Log("err", cerr)
 		}
 	}()
 	level.Info(logger).Log("StoreLog", *storePath)
@@ -325,7 +363,16 @@ func runStore(args []string) error {
 			registerMetrics(mux)
 			registerProfile(mux)
 			registerHealthCheck(mux)
-			return http.Serve(apiListener, cors.Default().Handler(mux))
+
+			srv := http.Server{
+				Handler: cors.Default().Handler(mux),
+				// TODO(nk2ge5k): do not really understand yet what timeouts are
+				// suppose to be here.
+				ReadTimeout:  0,
+				WriteTimeout: 0,
+			}
+
+			return srv.Serve(apiListener)
 		}, func(error) {
 			apiListener.Close()
 		})
